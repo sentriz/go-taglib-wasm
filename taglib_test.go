@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -19,60 +20,65 @@ func TestFile(t *testing.T) {
 	path := tmpf(t, egFlac, "eg.flac")
 	f, err := taglib.New(path)
 	nilErr(t, err)
-	defer f.Close()
 
-	artists := f.GetTag("artist")
-	eq(t, len(artists), 2)
-	eq(t, artists[0], "Artist One")
-	eq(t, artists[1], "Artist Two")
-
-	f.SetTag("artist")
-
-	artists = f.GetTag("artist")
-	eq(t, len(artists), 0)
-
-	f.SetTag("artist", "ABC")
-
-	artists = f.GetTag("artist")
-	eq(t, len(artists), 1)
-	eq(t, artists[0], "ABC")
-
-	f.SetTag("artist", "ABC", "DEF")
-
-	artists = f.GetTag("artist")
-	eq(t, len(artists), 2)
-	eq(t, artists[0], "ABC")
-	eq(t, artists[1], "DEF")
-
-	f.SetTag("artist", "💪")
-
-	artists = f.GetTag("artist")
-	eq(t, len(artists), 1)
-	eq(t, artists[0], "💪")
+	tags := f.ReadTags()
+	eq(t, len(tags["ARTIST"]), 2)
+	eq(t, tags["ARTIST"][0], "Artist One")
+	eq(t, tags["ARTIST"][1], "Artist Two")
 
 	eq(t, 1*time.Second, f.Length())
 	eq(t, 1460, f.Bitrate())
 	eq(t, 48_000, f.SampleRate())
 	eq(t, 2, f.Channels())
 
-	err = f.Save()
-	nilErr(t, err)
+	f.Close()
+}
+
+func TestWrite(t *testing.T) {
+	path := tmpf(t, egFlac, "eg.flac")
+
+	tags := map[string][]string{
+		"ONE":   {"one", "two", "three", "four"},
+		"FIVE":  {"six", "seven"},
+		"EIGHT": {"nine"},
+	}
+
+	{
+		f, err := taglib.New(path)
+		nilErr(t, err)
+
+		f.WriteTags(tags)
+
+		err = f.Save()
+		nilErr(t, err)
+
+		f.Close()
+	}
+	{
+		f, err := taglib.New(path)
+		nilErr(t, err)
+
+		got := f.ReadTags()
+		if !maps.EqualFunc(tags, got, slices.Equal) {
+			t.Errorf("%v != %v", got, tags)
+		}
+
+		f.Close()
+	}
 }
 
 func TestMultiOpen(t *testing.T) {
-	t.Skip("")
-
 	{
 		path := tmpf(t, egFlac, "eg.flac")
 		f, err := taglib.New(path)
 		nilErr(t, err)
-		defer f.Close()
+		f.Close()
 	}
 	{
 		path := tmpf(t, egFlac, "eg.flac")
 		f, err := taglib.New(path)
 		nilErr(t, err)
-		defer f.Close()
+		f.Close()
 	}
 }
 
@@ -83,7 +89,7 @@ func BenchmarkOpen(b *testing.B) {
 	for range b.N {
 		f, err := taglib.New(path)
 		nilErr(b, err)
-		_ = maps.Collect(f.IterTags())
+		_ = f.ReadTags()
 		f.Close()
 	}
 }
